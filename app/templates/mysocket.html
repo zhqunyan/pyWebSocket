@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <title>FastAPI WebSocket 测试</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+
+<body class="bg-gradient-to-r from-blue-50 to-indigo-100 min-h-screen flex items-center justify-center p-4">
+
+    <div class="w-full max-w-md bg-white rounded-xl shadow-lg overflow-hidden">
+        <!-- Header -->
+        <div class="bg-indigo-600 text-white py-4 px-6">
+            <h1 class="text-xl font-bold"><i class="fas fa-plug mr-2"></i>WebSocket 连接测试</h1>
+        </div>
+
+        <!-- Main Content -->
+        <div class="p-6 space-y-4">
+            <label for="wsUrl" class="block text-sm font-medium text-gray-700">服务器地址:</label>
+            <input type="url" id="wsUrl" value="ws://localhost:8000/ws" placeholder="输入你的 FastAPI WebSocket 地址"
+                class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 px-3 py-2" />
+
+            <button onclick="connect()"
+                class="w-full mt-2 inline-flex justify-center items-center px-4 py-2 border border-transparent text-base font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition duration-200 ease-in-out transform hover:-translate-y-0.5">
+                <i class="fas fa-link mr-2"></i>建立连接
+            </button>
+
+            <hr class="my-4" />
+
+            <textarea id="messageInput" rows="3" placeholder="发送消息给服务端..."
+                class="block w-full border border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 px-3 py-2 resize-none"></textarea>
+
+            <button onclick="sendMessage()" disabled id="sendBtn"
+                class="w-full mt-2 inline-flex justify-center items-center px-4 py-2 border border-transparent text-base font-medium rounded-md text-white bg-indigo-600 opacity-50 cursor-not-allowed hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-200 ease-in-out">
+                <i class="fas fa-paper-plane mr-2"></i>发送消息
+            </button>
+
+            <hr class="my-4" />
+
+            <div class="flex justify-between mb-2">
+                <span class="font-semibold text-gray-700">通信记录：</span>
+                <button onclick="clearLog()" class="text-xs text-red-500 hover:text-red-700 underline">清空日志</button>
+            </div>
+            <ul id="logList"
+                class="border border-gray-200 h-60 overflow-auto p-2 bg-gray-50 rounded-md list-disc pl-5 space-y-1 text-sm">
+            </ul>
+        </div>
+
+        <!-- Footer Status Bar -->
+        <div id="statusBar" onclick="disconnect()"
+            class="px-6 py-3 text-sm text-center text-gray-500 border-t border-gray-200 bg-gray-50">
+            当前状态：<strong id="connectionStatus" class="text-yellow-500">未连接</strong>
+        </div>
+    </div>
+
+    <script>
+        let socket = null;
+
+        let heartbeat = null;
+        const heartbeatInterval = 5000; // 定义心跳间隔 30 秒
+
+        function log(msg) {
+            const li = document.createElement('li');
+            const timeStr = new Date().toLocaleTimeString();
+            li.textContent = `[${timeStr}] ${msg}`;
+            document.getElementById("logList").appendChild(li);
+            document.getElementById("logList").scrollTop = document.getElementById("logList").scrollHeight;
+        }
+
+        function updateConnectionStatus(status, colorClass) {
+            const statusEl = document.getElementById("connectionStatus");
+            statusEl.className = "";
+            statusEl.classList.add(colorClass);
+            statusEl.innerText = status;
+        }
+
+        async function connect() {
+            if (socket && socket.readyState <= 1) {
+                alert("已存在活动连接，请先断开！");
+                return;
+            }
+            const url = document.getElementById("wsUrl").value.trim();
+            try {
+                socket = new WebSocket(url);
+
+                socket.onopen = () => {
+                    log(`✅ 已连接至 ${url}`);
+                    updateConnectionStatus("已连接", "text-green-500");
+                    document.getElementById("sendBtn").disabled = false;
+                    document.getElementById("sendBtn").classList.remove("opacity-50", "cursor-not-allowed");
+
+                    // 开启心跳
+                    heartbeat = setInterval(() => {
+                        socket.send("__ping__");
+                    }, (heartbeatInterval));
+                };
+
+                socket.onerror = error => {
+                    console.error(error);
+                    log("❌ 发生错误：" + JSON.stringify(error));
+                    updateConnectionStatus("发生错误", "text-red-500");
+                };
+
+                socket.onclose = event => {
+                    log(`⚠️ 断开连接 Code=${event.code} Reason="${event.reason}"`);
+                    updateConnectionStatus("已关闭", "text-gray-500");
+                    document.getElementById("sendBtn").disabled = true;
+                    document.getElementById("sendBtn").classList.add("opacity-50", "cursor-not-allowed");
+
+                    // 清除心跳
+                    clearInterval(heartbeat);
+                };
+
+                socket.onmessage = msg => {
+                    if (msg.data === "__pong__") return; // log('Received pong from server');
+                    else log(`< 接收来自服务器的消息：${msg.data}`);
+                };
+            } catch (e) {
+                alert("无效URL或无法初始化WebSocket连接");
+                console.error(e);
+            }
+        }
+
+        function sendMessage() {
+            const input = document.getElementById("messageInput");
+            const data = input.value.trim();
+
+            if (data === "") {
+                alert("请输入有效消息再尝试发送");
+                return;
+            }
+
+            if (!socket || socket.readyState !== WebSocket.OPEN) {
+                alert("尚未建立有效的WebSocket连接");
+                return;
+            }
+
+            try {
+                socket.send(data);
+                log(`> 向服务器发送消息：${data}`);
+                input.value = '';
+            } catch (err) {
+                log(`❌ 发送失败：${err.message}`);
+            }
+        }
+
+        function clearLog() {
+            const logsContainer = document.getElementById("logList");
+            while (logsContainer.firstChild) {
+                logsContainer.removeChild(logsContainer.lastChild);
+            }
+        }
+
+        function disconnect() {
+            if (socket && socket.readyState <= 1) {
+                if (confirm("是否确认断开服务器连接？"))
+                    socket.close();
+            }
+        }
+
+        window.addEventListener("beforeunload", () => {
+            if (socket && socket.readyState <= 1) {
+                socket.close(); // 自动清理连接以防泄露
+            }
+        });
+    </script>
+</body>
+
+</html
