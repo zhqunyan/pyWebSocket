@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Socket.IO FastAPI Test Page</title>
+    <!-- 引入TailwindCSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入Font Awesome图标库 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <!-- 引入Socket.IO客户端 -->
+    <script src="https://cdn.socket.io/4.4.1/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .message-bubble.sent {
+            background-color: #dcfce7;
+        }
+
+        .message-bubble.received {
+            background-color: #dbeafe;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+
+    <div class="w-full max-w-md bg-white rounded-xl shadow-lg overflow-hidden">
+        <div class="p-6 border-b border-gray-200">
+            <h1 class="text-2xl font-bold text-center">WebSocket聊天室演示</h1>
+            <p class="mt-2 text-sm text-center text-gray-500">基于 Socket.IO 和 FastAPI 构建</p>
+        </div>
+
+        <div id="messagesContainer" class="flex-grow h-96 overflow-y-auto p-4 space-y-4 scroll-smooth"></div>
+
+        <form id="chatForm" class="border-t border-gray-200 px-4 py-3 flex gap-x-2 sticky bottom-0 bg-white">
+            <input type="text" id="messageInput" placeholder="输入消息..." autocomplete="off" required
+                class="flex-1 px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <button type="submit"
+                class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full transition duration-300 ease-in-out transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                发送
+            </button>
+        </form>
+    </div>
+
+    <script>
+        const socket = io('http://127.0.0.1:8000');
+
+        // 连接事件监听
+        socket.on('connect', () => {
+            console.log(`已连接至服务器，ID: ${socket.id}`);
+            addSystemMessage("✅ 已连接到服务器");
+        });
+
+        // 断开连接事件监听
+        socket.on('disconnect', () => {
+            console.warn('与服务器断开连接');
+            addSystemMessage("⚠️ 与服务器失去连接");
+        });
+
+        // 接收服务端广播的消息
+        socket.on('broadcast_message', function (data) {
+            displayReceivedMessage(data.message);
+        });
+
+        document.getElementById('chatForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+            const inputElement = document.getElementById('messageInput');
+            const messageText = inputElement.value.trim();
+
+            if (!messageText) return;
+
+            sendMessage(messageText);
+            inputElement.value = '';
+        });
+
+        function sendMessage(text) {
+            socket.emit('send_message', { message: text });
+            displaySentMessage(text);
+        }
+
+        function displaySentMessage(content) {
+            appendMessageToDOM({ content, isSender: true });
+        }
+
+        function displayReceivedMessage(content) {
+            appendMessageToDOM({ content, isSender: false });
+        }
+
+        function addSystemMessage(msg) {
+            const container = document.getElementById('messagesContainer');
+            const systemDiv = document.createElement('div');
+            systemDiv.className = "text-xs text-center my-2";
+            systemDiv.textContent = msg;
+            container.appendChild(systemDiv);
+            scrollToBottom();
+        }
+
+        function appendMessageToDOM({ content, isSender }) {
+            const container = document.getElementById('messagesContainer');
+            const bubbleClass = isSender ? 'sent' : 'received';
+
+            const div = document.createElement('div');
+            div.className = `message-bubble ${bubbleClass} p-3 rounded-lg`;
+            div.innerHTML = `<span>${content}</span>`;
+            container.appendChild(div);
+
+            scrollToBottom();
+        }
+
+        function scrollToBottom() {
+            const container = document.getElementById('messagesContainer');
+            container.scrollTop = container.scrollHeight;
+        }
+    </script>
+
+</body>
+
+</html>
